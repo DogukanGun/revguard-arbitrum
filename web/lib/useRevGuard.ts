@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePublicClient, useWalletClient } from "wagmi";
+import { useConfig, usePublicClient } from "wagmi";
+import { getWalletClient } from "wagmi/actions";
 import type { Address, Hex } from "viem";
 import {
   HeartbeatService,
@@ -48,7 +49,7 @@ export interface Preview {
 
 export function useRevGuard() {
   const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
+  const config = useConfig();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [chain, setChain] = useState<Delegation[] | null>(null);
@@ -69,9 +70,23 @@ export function useRevGuard() {
     setEvents((e) => [{ id: ++logId.current, kind, message, tx }, ...e].slice(0, 40));
   }, []);
 
+  // Resolve a usable wallet client on demand. `useWalletClient()` can be transiently undefined under
+  // wagmi's ssr hydration even while connected, which would make actions silently no-op; fetching it
+  // imperatively at click time (and logging on failure) avoids that dead-end.
+  const requireWallet = useCallback(async () => {
+    const wc = await getWalletClient(config, { chainId: CHAIN_ID }).catch(() => null);
+    if (!wc?.account) {
+      log("danger", "No wallet available. Unlock MetaMask and make sure it's on Arbitrum Sepolia, then retry.");
+      return null;
+    }
+    return wc;
+  }, [config, log]);
+
   // -------- initialize: build + sign the chain, register signer, start heartbeat --------
   const initialize = useCallback(async () => {
-    if (!publicClient || !walletClient?.account) return;
+    if (!publicClient) return;
+    const walletClient = await requireWallet();
+    if (!walletClient) return;
     setBusy(true);
     setPhase("initializing");
     try {
@@ -123,11 +138,13 @@ export function useRevGuard() {
     } finally {
       setBusy(false);
     }
-  }, [publicClient, walletClient, log]);
+  }, [publicClient, requireWallet, log]);
 
   // -------- redeem: agent acts through the chain --------
   const redeem = useCallback(async () => {
-    if (!publicClient || !walletClient?.account || !chain) return;
+    if (!publicClient || !chain) return;
+    const walletClient = await requireWallet();
+    if (!walletClient) return;
     setBusy(true);
     setPhase("working");
     try {
@@ -147,11 +164,12 @@ export function useRevGuard() {
     } finally {
       setBusy(false);
     }
-  }, [publicClient, walletClient, chain, log, preview]);
+  }, [publicClient, requireWallet, chain, log, preview]);
 
   // -------- revoke (on-chain bumpNonce) --------
   const revokeOnchain = useCallback(async () => {
-    if (!walletClient?.account) return;
+    const walletClient = await requireWallet();
+    if (!walletClient) return;
     setBusy(true);
     setPhase("working");
     try {
@@ -171,7 +189,7 @@ export function useRevGuard() {
     } finally {
       setBusy(false);
     }
-  }, [walletClient, boundS, log]);
+  }, [requireWallet, boundS, log]);
 
   // -------- revoke (by silence: stop heartbeats) --------
   const revokeSilence = useCallback(() => {
