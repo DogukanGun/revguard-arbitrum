@@ -1,0 +1,27 @@
+# Foundry
+/out/
+/cache/
+/broadcast/
+# keep deployment receipts only, not run metadata:
+/broadcast/**/dry-run/
+
+# Local deployment artifacts (chain-specific; 31337 sim output)
+/deployments/31337.json
+
+# Node / SDK
+node_modules/
+sdk/node_modules/
+sdk/dist/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Python sim
+sim/**/__pycache__/
+*.pyc
+
+# OS
+.DS_Store
