@@ -22,6 +22,16 @@ import type { SignedHeartbeat } from "./heartbeat.js";
 /** ERC-7579 "simple single" execution mode (CALLTYPE_SINGLE + EXECTYPE_DEFAULT) == bytes32(0). */
 export const SINGLE_MODE = `0x${"00".repeat(32)}` as Hex;
 
+/**
+ * Optional EIP-1559 fee overrides. Injected wallets sometimes under-estimate `maxFeePerGas` on
+ * Arbitrum and the node rejects the tx ("max fee per gas less than block base fee"); passing an
+ * explicit, live-base-fee-derived ceiling avoids that. Empty object = let the wallet decide.
+ */
+export interface FeeOverrides {
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+}
+
 /** ERC-7579 single execution calldata: target ++ value ++ callData. */
 export function encodeSingleExecution(target: Address, value: bigint, callData: Hex): Hex {
   return encodePacked(["address", "uint256", "bytes"], [target, value, callData]);
@@ -41,6 +51,7 @@ export async function redeem(
   manager: Address,
   chain: Delegation[],
   execution: Hex,
+  fees: FeeOverrides = {},
 ): Promise<Hex> {
   return wallet.writeContract({
     account: agent,
@@ -49,6 +60,7 @@ export async function redeem(
     abi: MANAGER_ABI,
     functionName: "redeemDelegations",
     args: [[encodePermissionContext(chain)], [SINGLE_MODE], [execution]],
+    ...fees,
   });
 }
 
@@ -98,6 +110,7 @@ function executeFromExecutor(
   root: Address,
   target: Address,
   innerCalldata: Hex,
+  fees: FeeOverrides = {},
 ): Promise<Hex> {
   return wallet.writeContract({
     account: sender,
@@ -106,6 +119,7 @@ function executeFromExecutor(
     abi: ACCOUNT_ABI,
     functionName: "executeFromExecutor",
     args: [SINGLE_MODE, encodeSingleExecution(target, 0n, innerCalldata)],
+    ...fees,
   });
 }
 
@@ -116,9 +130,10 @@ export async function registerSignerViaAccount(
   root: Address,
   heartbeatEnforcer: Address,
   signer: Address,
+  fees: FeeOverrides = {},
 ): Promise<Hex> {
   const inner = encodeFunctionData({ abi: HEARTBEAT_ENFORCER_ABI, functionName: "setSigner", args: [signer] });
-  return executeFromExecutor(wallet, sender, root, heartbeatEnforcer, inner);
+  return executeFromExecutor(wallet, sender, root, heartbeatEnforcer, inner, fees);
 }
 
 /** Bulk-revoke all of the smart-account delegator's delegations (incrementNonce), routed via the account. */
@@ -128,9 +143,10 @@ export async function revokeViaAccount(
   root: Address,
   nonceEnforcer: Address,
   manager: Address,
+  fees: FeeOverrides = {},
 ): Promise<Hex> {
   const inner = encodeFunctionData({ abi: NONCE_ENFORCER_ABI, functionName: "incrementNonce", args: [manager] });
-  return executeFromExecutor(wallet, sender, root, nonceEnforcer, inner);
+  return executeFromExecutor(wallet, sender, root, nonceEnforcer, inner, fees);
 }
 
 /** Disable a single delegation whose delegator is the smart account, routed via the account. */

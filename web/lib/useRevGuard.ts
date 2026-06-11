@@ -82,6 +82,22 @@ export function useRevGuard() {
     return wc;
   }, [config, log]);
 
+  // Derive an EIP-1559 fee ceiling from the LIVE base fee with generous headroom. Injected wallets
+  // sometimes bid a maxFeePerGas below Arbitrum's base fee ("max fee per gas less than block base
+  // fee"); passing an explicit ceiling makes the tx submit reliably. Effective cost is still the base
+  // fee — the ceiling only prevents under-bidding.
+  const fees = useCallback(async () => {
+    if (!publicClient) return {};
+    try {
+      const block = await publicClient.getBlock({ blockTag: "latest" });
+      const base = block.baseFeePerGas ?? 0n;
+      if (base <= 0n) return {};
+      return { maxFeePerGas: base * 5n, maxPriorityFeePerGas: 0n };
+    } catch {
+      return {};
+    }
+  }, [publicClient]);
+
   // -------- initialize: build + sign the chain, register signer, start heartbeat --------
   const initialize = useCallback(async () => {
     if (!publicClient) return;
@@ -120,6 +136,7 @@ export function useRevGuard() {
         root,
         deployment.heartbeatEnforcer,
         hbSigner.address,
+        await fees(),
       );
       log("ok", "Heartbeat signer registered.", tx);
 
@@ -138,7 +155,7 @@ export function useRevGuard() {
     } finally {
       setBusy(false);
     }
-  }, [publicClient, requireWallet, log]);
+  }, [publicClient, requireWallet, fees, log]);
 
   // -------- redeem: agent acts through the chain --------
   const redeem = useCallback(async () => {
@@ -154,7 +171,7 @@ export function useRevGuard() {
       attachHeartbeat(chain, proof);
       const exec = encodeSingleExecution(deployment.demoCounter, 0n, incrementCalldata());
       log("info", "Agent redeeming the chain…");
-      const tx = await sdkRedeem(walletClient, walletClient.account, deployment.delegationManager, chain, exec);
+      const tx = await sdkRedeem(walletClient, walletClient.account, deployment.delegationManager, chain, exec, await fees());
       log("ok", "Redeemed — agent executed on-chain.", tx);
       await refresh();
       setPhase("ready");
@@ -164,7 +181,7 @@ export function useRevGuard() {
     } finally {
       setBusy(false);
     }
-  }, [publicClient, requireWallet, chain, log, preview]);
+  }, [publicClient, requireWallet, fees, chain, log, preview]);
 
   // -------- revoke (on-chain bumpNonce) --------
   const revokeOnchain = useCallback(async () => {
@@ -181,6 +198,7 @@ export function useRevGuard() {
         deployment.demoRoot,
         deployment.nonceEnforcer,
         deployment.delegationManager,
+        await fees(),
       );
       log("danger", "Revoked on-chain. Authority bumped.", tx);
       await refresh();
@@ -189,7 +207,7 @@ export function useRevGuard() {
     } finally {
       setBusy(false);
     }
-  }, [requireWallet, boundS, log]);
+  }, [requireWallet, fees, boundS, log]);
 
   // -------- revoke (by silence: stop heartbeats) --------
   const revokeSilence = useCallback(() => {
