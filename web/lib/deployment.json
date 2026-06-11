@@ -1,0 +1,10 @@
+{
+  "chainId": 421614,
+  "heartbeatEnforcer": "0xE49df9099e73bAe6a36FeCF033bA2C8c6829bB74",
+  "revGuardLens": "0x15730f592e3Ae7eD47FB8272A37E372404cBC734",
+  "delegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+  "timestampEnforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+  "nonceEnforcer": "0xDE4f2FAC4B3D87A1d9953Ca5FC09FCa7F366254f",
+  "demoRoot": "0xc34dbaFc502FB2f2E3dAe66e4988a5Dd26E28B85",
+  "demoCounter": "0xc4F9Eca797596Ae0BdD19e53B5aC5D9F8769DC15"
+}
